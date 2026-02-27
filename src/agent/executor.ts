@@ -105,8 +105,17 @@ async function executeStep(
       throw new Error(`Unknown tool: ${step.tool}`);
     }
     
+    // Parse parameters from JSON string
+    let params: Record<string, any> = {};
+    try {
+      params = JSON.parse(step.parametersJson || '{}');
+    } catch (e) {
+      // If not valid JSON, try to use as-is
+      params = {};
+    }
+    
     // Resolve parameter references
-    const resolvedParams = resolveParameters(step.parameters, stepOutputs);
+    const resolvedParams = resolveParameters(params, stepOutputs);
     
     // Execute the tool
     const output = await tool.execute(resolvedParams);
@@ -141,11 +150,18 @@ async function executeStep(
       durationMs,
     });
     
+    let failedParams: Record<string, any> = {};
+    try {
+      failedParams = JSON.parse(step.parametersJson || '{}');
+    } catch (e) {
+      failedParams = {};
+    }
+    
     return {
       stepNumber: step.stepNumber,
       tool: step.tool,
       description: step.description,
-      input: step.parameters,
+      input: failedParams,
       output: null,
       durationMs,
       success: false,
@@ -176,11 +192,17 @@ export async function executePlan(
     
     if (depStatus.failed.length > 0) {
       // Skip if dependencies failed
+      let skipParams: Record<string, any> = {};
+      try {
+        skipParams = JSON.parse(step.parametersJson || '{}');
+      } catch (e) {
+        skipParams = {};
+      }
       results.push({
         stepNumber: step.stepNumber,
         tool: step.tool,
         description: step.description,
-        input: step.parameters,
+        input: skipParams,
         output: null,
         durationMs: 0,
         success: false,
@@ -192,11 +214,17 @@ export async function executePlan(
     
     if (depStatus.missing.length > 0) {
       // This shouldn't happen with sorted steps, but handle it
+      let waitParams: Record<string, any> = {};
+      try {
+        waitParams = JSON.parse(step.parametersJson || '{}');
+      } catch (e) {
+        waitParams = {};
+      }
       results.push({
         stepNumber: step.stepNumber,
         tool: step.tool,
         description: step.description,
-        input: step.parameters,
+        input: waitParams,
         output: null,
         durationMs: 0,
         success: false,

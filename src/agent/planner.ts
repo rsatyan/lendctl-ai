@@ -27,10 +27,9 @@ function checkApiKey(): void {
 const PlanStepSchema = z.object({
   stepNumber: z.number().describe('Sequential step number'),
   description: z.string().describe('What this step accomplishes'),
-  tool: z.string().describe('Tool name to execute'),
-  parameters: z.record(z.any()).describe('Parameters to pass to the tool'),
+  tool: z.string().describe('Tool name to execute (e.g., calculateDTI, qualifyMortgage)'),
+  parametersJson: z.string().describe('JSON string of parameters to pass to the tool'),
   dependsOn: z.array(z.number()).optional().describe('Step numbers this depends on'),
-  outputMapping: z.string().optional().describe('How to reference this output in later steps'),
 });
 
 /**
