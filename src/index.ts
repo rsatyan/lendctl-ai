@@ -23,7 +23,7 @@ ${chalk.cyan('╚═════════════════════
 program
   .name('lendctl-ai')
   .description('Autonomous lending decision agent powered by LendCtl CLI suite')
-  .version('0.1.0');
+  .version('0.1.2');
 
 program
   .command('ask')
