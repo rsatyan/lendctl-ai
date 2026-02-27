@@ -184,4 +184,4 @@ Apache-2.0 © [Satyan Avatara](https://github.com/rsatyan)
 
 ---
 
-Built with ❤️ by [Avatar Consulting](https://github.com/rsatyan)
+Built with ❤️ by [Avatara Consulting](https://github.com/rsatyan)

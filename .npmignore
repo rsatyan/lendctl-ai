@@ -1,0 +1,7 @@
+src/
+evals/
+tsconfig.json
+.env*
+node_modules/
+*.log
+.git/
