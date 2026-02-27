@@ -1,0 +1,58 @@
+[
+  {
+    "id": "mortgage-basic",
+    "question": "Can I qualify for a $350,000 mortgage with $85,000 annual income and $500/month in existing debts?",
+    "expectedTools": ["calculateDTI", "qualifyMortgage"],
+    "expectedOutcome": "approval",
+    "category": "mortgage"
+  },
+  {
+    "id": "mortgage-high-dti",
+    "question": "I make $60,000/year and want to buy a $400,000 home with 5% down. I have $800/month in car and student loans.",
+    "expectedTools": ["calculateDTI", "qualifyMortgage", "validateQM"],
+    "expectedOutcome": "conditional",
+    "category": "mortgage"
+  },
+  {
+    "id": "mortgage-comparison",
+    "question": "First-time homebuyer, 660 credit score, $70k income, buying $280k home with 5% down. FHA or conventional?",
+    "expectedTools": ["analyzeCredit", "compareLoanPrograms"],
+    "expectedOutcome": "comparison",
+    "category": "mortgage"
+  },
+  {
+    "id": "auto-basic",
+    "question": "I want to finance a $35,000 used car (3 years old) with $5,000 down. My credit score is 680. What are my options?",
+    "expectedTools": ["analyzeCredit", "calculateAutoLoan", "recommendGAP"],
+    "expectedOutcome": "approval",
+    "category": "auto"
+  },
+  {
+    "id": "personal-consolidation",
+    "question": "I have $15,000 in credit card debt at 22% APR. Should I get a personal loan or balance transfer card? My score is 720.",
+    "expectedTools": ["analyzeCredit", "qualifyPersonalLoan", "compareDebtConsolidation"],
+    "expectedOutcome": "comparison",
+    "category": "personal"
+  },
+  {
+    "id": "credit-improvement",
+    "question": "My credit score is 620 with a $5,000 credit card balance on a $6,000 limit. How can I improve my score quickly?",
+    "expectedTools": ["analyzeCredit", "simulateRescore"],
+    "expectedOutcome": "advice",
+    "category": "credit"
+  },
+  {
+    "id": "credit-card-limit",
+    "question": "I make $65,000 per year with a 740 credit score. What credit limit could I expect for a new rewards card?",
+    "expectedTools": ["analyzeCredit", "calculateCreditLimit"],
+    "expectedOutcome": "estimate",
+    "category": "card"
+  },
+  {
+    "id": "adverse-action",
+    "question": "I was denied for a credit card because my score is 580. What should I do?",
+    "expectedTools": ["analyzeCredit", "generateAdverseAction"],
+    "expectedOutcome": "adverse_action",
+    "category": "compliance"
+  }
+]

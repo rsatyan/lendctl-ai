@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.bun/
+
+# Build output
+dist/
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+coverage/
+
+# WhatsApp auth
+auth_info/
+
+# SQLite databases
+*.db
+*.sqlite
+
+# Temporary files
+.tmp/
+tmp/
