@@ -20,10 +20,66 @@ ${chalk.cyan('║')}  ${chalk.gray('Powered by LendCtl CLI Suite')}             
 ${chalk.cyan('╚═══════════════════════════════════════════════════════════╝')}
 `;
 
+/**
+ * Convert markdown to terminal-friendly formatted text
+ */
+function renderMarkdownToTerminal(md: string): string {
+  let result = md;
+  
+  // Headers: ### Header -> bold underlined
+  result = result.replace(/^### (.+)$/gm, (_, h) => chalk.bold.underline(h));
+  result = result.replace(/^## (.+)$/gm, (_, h) => chalk.bold.cyan(h));
+  result = result.replace(/^# (.+)$/gm, (_, h) => chalk.bold.cyan.underline(h));
+  
+  // Bold: **text** -> bold
+  result = result.replace(/\*\*([^*]+)\*\*/g, (_, t) => chalk.bold(t));
+  
+  // Italic: *text* or _text_ -> italic (dim in terminal)
+  result = result.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, (_, t) => chalk.italic(t));
+  result = result.replace(/_([^_]+)_/g, (_, t) => chalk.italic(t));
+  
+  // Code: `code` -> yellow
+  result = result.replace(/`([^`]+)`/g, (_, c) => chalk.yellow(c));
+  
+  // Lists: - item -> • item with indent
+  result = result.replace(/^- (.+)$/gm, (_, item) => `  ${chalk.cyan('•')} ${item}`);
+  result = result.replace(/^\* (.+)$/gm, (_, item) => `  ${chalk.cyan('•')} ${item}`);
+  
+  // Numbered lists: 1. item -> 1. with color
+  result = result.replace(/^(\d+)\. (.+)$/gm, (_, num, item) => `  ${chalk.cyan(num + '.')} ${item}`);
+  
+  // Checkmarks
+  result = result.replace(/✓/g, chalk.green('✓'));
+  result = result.replace(/✗/g, chalk.red('✗'));
+  result = result.replace(/⚠️/g, chalk.yellow('⚠'));
+  
+  // Horizontal rules
+  result = result.replace(/^---+$/gm, chalk.gray('─'.repeat(50)));
+  result = result.replace(/^===+$/gm, chalk.gray('═'.repeat(50)));
+  
+  return result;
+}
+
+/**
+ * Format result as JSON
+ */
+function formatAsJson(result: any): string {
+  return JSON.stringify({
+    sessionId: result.sessionId,
+    success: result.success,
+    iterations: result.iterations,
+    totalDurationMs: result.totalDurationMs,
+    plan: result.plan,
+    results: result.results,
+    validation: result.validation,
+    report: typeof result.report === 'string' ? result.report : '[streaming]',
+  }, null, 2);
+}
+
 program
   .name('lendctl-ai')
   .description('Autonomous lending decision agent powered by LendCtl CLI suite')
-  .version('0.2.0');
+  .version('0.2.1');
 
 program
   .command('ask')
@@ -32,9 +88,17 @@ program
   .option('-m, --model <model>', 'LLM model to use', 'gpt-4o')
   .option('-i, --iterations <n>', 'Max planning iterations', '3')
   .option('-v, --verbose', 'Show detailed output')
+  .option('-j, --json', 'Output as JSON')
+  .option('-f, --format <format>', 'Output format: plain, json, markdown', 'plain')
   .option('--quick', 'Quick mode (skip LLM report generation)')
   .action(async (question, options) => {
-    console.log(banner);
+    // Determine output format
+    const outputJson = options.json || options.format === 'json';
+    const outputMarkdown = options.format === 'markdown';
+    
+    if (!outputJson) {
+      console.log(banner);
+    }
     
     const agent = new LendCtlAgent({
       model: options.model,
@@ -42,25 +106,50 @@ program
       verbose: options.verbose,
     });
     
-    console.log(chalk.blue(`📋 Question: ${question}\n`));
+    if (!outputJson) {
+      console.log(chalk.blue(`📋 Question: ${question}\n`));
+    }
     
     try {
       if (options.quick) {
-        console.log(chalk.gray('Running in quick mode...\n'));
+        if (!outputJson) {
+          console.log(chalk.gray('Running in quick mode...\n'));
+        }
         const result = await agent.quickQuery(question);
-        console.log(result.summary);
-        console.log(chalk.gray(`\nSession: ${result.sessionId}`));
+        
+        if (outputJson) {
+          console.log(JSON.stringify({
+            sessionId: result.sessionId,
+            summary: result.summary,
+            results: result.results,
+            validation: result.validation,
+          }, null, 2));
+        } else {
+          console.log(outputMarkdown ? result.summary : renderMarkdownToTerminal(result.summary));
+          console.log(chalk.gray(`\nSession: ${result.sessionId}`));
+        }
       } else {
-        const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-        let i = 0;
-        const spinnerInterval = setInterval(() => {
-          process.stdout.write(`\r${chalk.cyan(spinner[i++ % spinner.length])} Analyzing...`);
-        }, 100);
+        let spinnerInterval: NodeJS.Timeout | undefined;
+        
+        if (!outputJson) {
+          const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+          let i = 0;
+          spinnerInterval = setInterval(() => {
+            process.stdout.write(`\r${chalk.cyan(spinner[i++ % spinner.length])} Analyzing...`);
+          }, 100);
+        }
         
         const result = await agent.query(question);
         
-        clearInterval(spinnerInterval);
-        process.stdout.write('\r' + ' '.repeat(20) + '\r');
+        if (spinnerInterval) {
+          clearInterval(spinnerInterval);
+          process.stdout.write('\r' + ' '.repeat(20) + '\r');
+        }
+        
+        if (outputJson) {
+          console.log(formatAsJson(result));
+          return;
+        }
         
         if (options.verbose) {
           console.log(chalk.yellow('\n📋 Plan:'));
@@ -86,13 +175,14 @@ program
         console.log(chalk.green('\n📝 Report:\n'));
         
         if (typeof result.report === 'string') {
-          console.log(result.report);
+          console.log(outputMarkdown ? result.report : renderMarkdownToTerminal(result.report));
         } else {
-          // Stream the report
+          // Stream the report and collect for rendering
+          let fullReport = '';
           for await (const chunk of result.report) {
-            process.stdout.write(chunk);
+            fullReport += chunk;
           }
-          console.log();
+          console.log(outputMarkdown ? fullReport : renderMarkdownToTerminal(fullReport));
         }
         
         console.log(chalk.gray(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`));
@@ -100,9 +190,13 @@ program
         console.log(chalk.gray(`Iterations: ${result.iterations} | Time: ${result.totalDurationMs}ms`));
       }
     } catch (error: any) {
-      console.error(chalk.red(`\n❌ Error: ${error.message}`));
-      if (options.verbose) {
-        console.error(error.stack);
+      if (outputJson) {
+        console.log(JSON.stringify({ error: error.message }, null, 2));
+      } else {
+        console.error(chalk.red(`\n❌ Error: ${error.message}`));
+        if (options.verbose) {
+          console.error(error.stack);
+        }
       }
       process.exit(1);
     }
@@ -112,20 +206,48 @@ program
   .command('chat')
   .description('Interactive chat mode')
   .option('-m, --model <model>', 'LLM model to use', 'gpt-4o')
+  .option('-j, --json', 'Output responses as JSON')
   .action(async (options) => {
-    console.log(banner);
-    console.log(chalk.gray('Type your lending questions. Enter "quit" to exit.\n'));
+    const outputJson = options.json;
+    
+    if (!outputJson) {
+      console.log(banner);
+      console.log(chalk.gray('Type your lending questions. Press Ctrl+C or type "quit" to exit.\n'));
+    }
     
     const agent = new LendCtlAgent({
       model: options.model,
       stream: true,
     });
     
+    // Handle SIGINT gracefully
+    process.on('SIGINT', () => {
+      if (!outputJson) {
+        console.log(chalk.gray('\n\nGoodbye! 👋'));
+      }
+      process.exit(0);
+    });
+    
     while (true) {
-      const question = await input({ message: chalk.blue('You:') });
+      let question: string;
+      
+      try {
+        question = await input({ message: outputJson ? '> ' : chalk.blue('You:') });
+      } catch (error: any) {
+        // Handle Ctrl+C during input (ExitPromptError)
+        if (error.name === 'ExitPromptError' || error.message?.includes('SIGINT') || error.message?.includes('force closed')) {
+          if (!outputJson) {
+            console.log(chalk.gray('\n\nGoodbye! 👋'));
+          }
+          process.exit(0);
+        }
+        throw error;
+      }
       
       if (question.toLowerCase() === 'quit' || question.toLowerCase() === 'exit') {
-        console.log(chalk.gray('\nGoodbye! 👋'));
+        if (!outputJson) {
+          console.log(chalk.gray('\nGoodbye! 👋'));
+        }
         break;
       }
       
@@ -133,23 +255,33 @@ program
         continue;
       }
       
-      console.log(chalk.green('\nAgent:'));
+      if (!outputJson) {
+        console.log(chalk.green('\nAgent:'));
+      }
       
       try {
         const result = await agent.query(question);
         
-        if (typeof result.report === 'string') {
-          console.log(result.report);
+        if (outputJson) {
+          console.log(formatAsJson(result));
         } else {
-          for await (const chunk of result.report) {
-            process.stdout.write(chunk);
+          let reportText = '';
+          if (typeof result.report === 'string') {
+            reportText = result.report;
+          } else {
+            for await (const chunk of result.report) {
+              reportText += chunk;
+            }
           }
-          console.log();
+          console.log(renderMarkdownToTerminal(reportText));
+          console.log(chalk.gray(`\n[${result.iterations} iterations, ${result.totalDurationMs}ms]\n`));
         }
-        
-        console.log(chalk.gray(`\n[${result.iterations} iterations, ${result.totalDurationMs}ms]\n`));
       } catch (error: any) {
-        console.error(chalk.red(`Error: ${error.message}\n`));
+        if (outputJson) {
+          console.log(JSON.stringify({ error: error.message }, null, 2));
+        } else {
+          console.error(chalk.red(`Error: ${error.message}\n`));
+        }
       }
     }
   });
