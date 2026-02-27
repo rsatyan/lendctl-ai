@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * LendCtl AI - Autonomous Lending Decision Agent
  * CLI Entry Point
