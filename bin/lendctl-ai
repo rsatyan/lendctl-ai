@@ -1,2 +1,10 @@
-#!/bin/sh
-exec node "$(dirname "$0")/../dist/index.js" "$@"
+#!/usr/bin/env sh
+# Find the real location of this script
+SELF=$(cd "$(dirname "$0")" && pwd -P)/$(basename "$0")
+while [ -h "$SELF" ]; do
+  DIR=$(dirname "$SELF")
+  SELF=$(readlink "$SELF")
+  case "$SELF" in /*) ;; *) SELF="$DIR/$SELF" ;; esac
+done
+DIR=$(dirname "$SELF")
+exec node "$DIR/../dist/index.js" "$@"

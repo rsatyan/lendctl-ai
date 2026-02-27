@@ -1,6 +1,6 @@
 {
   "name": "lendctl-ai",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Autonomous lending decision agent powered by LendCtl CLI suite",
   "author": "Satyan Avatara <rsatyan@gmail.com>",
   "license": "Apache-2.0",
