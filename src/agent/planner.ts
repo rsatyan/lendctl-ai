@@ -9,6 +9,19 @@ import { z } from 'zod';
 import { getToolDescriptions } from '../tools/registry';
 
 /**
+ * Check if OpenAI API key is configured
+ */
+function checkApiKey(): void {
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('\n❌ OPENAI_API_KEY not set!\n');
+    console.error('To use lendctl-ai, set your OpenAI API key:');
+    console.error('  export OPENAI_API_KEY=sk-...\n');
+    console.error('Get an API key at: https://platform.openai.com/api-keys\n');
+    process.exit(1);
+  }
+}
+
+/**
  * Plan step schema
  */
 const PlanStepSchema = z.object({
@@ -67,6 +80,8 @@ export async function createPlan(
   context?: string,
   model: string = 'gpt-4o'
 ): Promise<Plan> {
+  checkApiKey();
+  
   const { object: plan } = await generateObject({
     model: openai(model),
     schema: PlanSchema,
@@ -90,6 +105,8 @@ export async function replan(
   validationIssues: string[],
   model: string = 'gpt-4o'
 ): Promise<Plan> {
+  checkApiKey();
+  
   const { object: plan } = await generateObject({
     model: openai(model),
     schema: PlanSchema,
