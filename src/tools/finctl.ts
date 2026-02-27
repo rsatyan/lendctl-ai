@@ -1,10 +1,9 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { execSync } from 'child_process';
 
 /**
  * Income Analysis Tool
- * Wraps finctl CLI for income calculation and DTI analysis
+ * Pure calculation - no CLI dependency
  */
 export const analyzeIncome = tool({
   description: 'Analyze borrower income from multiple sources (W-2, self-employment, other) and calculate qualifying income',
@@ -13,20 +12,23 @@ export const analyzeIncome = tool({
     selfEmploymentIncome: z.number().optional().describe('Self-employment income (use 2-year average)'),
     otherIncome: z.number().optional().describe('Other income (rental, investments, alimony, etc.)'),
   }),
-  execute: async ({ w2Income, selfEmploymentIncome, otherIncome }) => {
-    const args: string[] = ['analyze'];
+  execute: async ({ w2Income = 0, selfEmploymentIncome = 0, otherIncome = 0 }) => {
+    const totalAnnual = w2Income + selfEmploymentIncome + otherIncome;
+    const monthlyIncome = totalAnnual / 12;
     
-    if (w2Income) args.push('--w2', String(w2Income));
-    if (selfEmploymentIncome) args.push('--self-emp', String(selfEmploymentIncome));
-    if (otherIncome) args.push('--other', String(otherIncome));
-    args.push('--json');
-    
-    try {
-      const result = execSync(`finctl ${args.join(' ')}`, { encoding: 'utf-8' });
-      return JSON.parse(result);
-    } catch (error: any) {
-      return { error: error.message, stderr: error.stderr?.toString() };
-    }
+    return {
+      w2Income,
+      selfEmploymentIncome,
+      otherIncome,
+      totalAnnualIncome: totalAnnual,
+      grossMonthlyIncome: Math.round(monthlyIncome * 100) / 100,
+      incomeBreakdown: {
+        w2Percentage: totalAnnual > 0 ? Math.round((w2Income / totalAnnual) * 100) : 0,
+        selfEmpPercentage: totalAnnual > 0 ? Math.round((selfEmploymentIncome / totalAnnual) * 100) : 0,
+        otherPercentage: totalAnnual > 0 ? Math.round((otherIncome / totalAnnual) * 100) : 0,
+      },
+      source: 'calculated',
+    };
   },
 });
 
@@ -35,29 +37,24 @@ export const calculateDTI = tool({
   parameters: z.object({
     grossMonthlyIncome: z.number().describe('Gross monthly income'),
     housingPayment: z.number().describe('Monthly housing payment (PITI: principal, interest, taxes, insurance)'),
-    monthlyDebts: z.number().describe('Total monthly debt obligations (car, student loans, credit cards, etc.)'),
+    monthlyDebts: z.number().optional().describe('Total monthly debt obligations (car, student loans, credit cards, etc.)'),
   }),
-  execute: async ({ grossMonthlyIncome, housingPayment, monthlyDebts }) => {
-    try {
-      const result = execSync(
-        `finctl dti --income ${grossMonthlyIncome} --housing ${housingPayment} --debts ${monthlyDebts} --json`,
-        { encoding: 'utf-8' }
-      );
-      return JSON.parse(result);
-    } catch (error: any) {
-      // Fallback calculation if CLI fails
-      const frontEnd = (housingPayment / grossMonthlyIncome) * 100;
-      const backEnd = ((housingPayment + monthlyDebts) / grossMonthlyIncome) * 100;
-      return {
-        grossMonthlyIncome,
-        housingPayment,
-        monthlyDebts,
-        frontEnd: Math.round(frontEnd * 100) / 100,
-        backEnd: Math.round(backEnd * 100) / 100,
-        qmCompliant: backEnd <= 43,
-        source: 'calculated'
-      };
-    }
+  execute: async ({ grossMonthlyIncome, housingPayment, monthlyDebts = 0 }) => {
+    const frontEnd = (housingPayment / grossMonthlyIncome) * 100;
+    const backEnd = ((housingPayment + monthlyDebts) / grossMonthlyIncome) * 100;
+    
+    return {
+      grossMonthlyIncome,
+      housingPayment,
+      monthlyDebts,
+      frontEndDTI: Math.round(frontEnd * 100) / 100,
+      backEndDTI: Math.round(backEnd * 100) / 100,
+      qmCompliant: backEnd <= 43,
+      conventionalLimit: backEnd <= 45,
+      fhaLimit: backEnd <= 50,
+      recommendation: backEnd <= 36 ? 'excellent' : backEnd <= 43 ? 'good' : backEnd <= 50 ? 'marginal' : 'high_risk',
+      source: 'calculated',
+    };
   },
 });
 

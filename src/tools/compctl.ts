@@ -1,108 +1,56 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { execSync } from 'child_process';
 
 /**
- * Compliance Tools
- * Wraps compctl CLI for regulatory compliance checks
+ * Compliance checking tools
+ * Pure calculation - no CLI dependency
  */
 export const validateQM = tool({
-  description: 'Validate loan against Qualified Mortgage (QM) and Ability-to-Repay (ATR) requirements',
+  description: 'Validate Qualified Mortgage (QM) compliance',
   parameters: z.object({
-    loanAmount: z.number().describe('Loan amount'),
-    annualIncome: z.number().describe('Annual income'),
-    monthlyDebts: z.number().describe('Monthly debt obligations'),
-    interestRate: z.number().describe('Interest rate'),
-    points: z.number().optional().describe('Points and fees'),
-    termMonths: z.number().optional().describe('Loan term in months'),
-    isInterestOnly: z.boolean().optional().describe('Is this an interest-only loan'),
-    hasNegativeAmortization: z.boolean().optional().describe('Does loan have negative amortization'),
-    hasBalloonPayment: z.boolean().optional().describe('Does loan have balloon payment'),
+    backEndDTI: z.number().describe('Back-end debt-to-income ratio'),
+    loanTermYears: z.number().optional().describe('Loan term in years'),
+    hasNegativeAmortization: z.boolean().optional(),
+    hasInterestOnly: z.boolean().optional(),
+    hasBalloonPayment: z.boolean().optional(),
+    pointsAndFees: z.number().optional().describe('Points and fees as percentage of loan'),
   }),
-  execute: async (params) => {
-    try {
-      const args = ['qm'];
-      args.push('--amount', String(params.loanAmount));
-      args.push('--income', String(params.annualIncome));
-      args.push('--debts', String(params.monthlyDebts));
-      args.push('--rate', String(params.interestRate));
-      if (params.points !== undefined) args.push('--points', String(params.points));
-      args.push('--json');
-      
-      const result = execSync(`compctl ${args.join(' ')}`, { encoding: 'utf-8' });
-      return JSON.parse(result);
-    } catch (error: any) {
-      // Fallback validation
-      const monthlyIncome = params.annualIncome / 12;
-      const termMonths = params.termMonths || 360;
-      
-      // Calculate estimated payment
-      const monthlyRate = params.interestRate / 100 / 12;
-      const payment = params.loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, termMonths)) / (Math.pow(1 + monthlyRate, termMonths) - 1);
-      
-      // Calculate DTI
-      const backEndDTI = ((payment + params.monthlyDebts) / monthlyIncome) * 100;
-      
-      // Points and fees check (max 3% for QM)
-      const pointsPercent = params.points ? (params.points / params.loanAmount) * 100 : 0;
-      const pointsCompliant = pointsPercent <= 3;
-      
-      // QM prohibited features
-      const prohibitedFeatures = [];
-      if (params.isInterestOnly) prohibitedFeatures.push('Interest-only payments');
-      if (params.hasNegativeAmortization) prohibitedFeatures.push('Negative amortization');
-      if (params.hasBalloonPayment) prohibitedFeatures.push('Balloon payment');
-      if (termMonths > 360) prohibitedFeatures.push('Term exceeds 30 years');
-      
-      // DTI safe harbor
-      const dtiCompliant = backEndDTI <= 43;
-      const safeHarbor = dtiCompliant && pointsCompliant && prohibitedFeatures.length === 0;
-      
-      // ATR documentation requirements
-      const atrRequirements = [
-        'Verify current income/assets',
-        'Verify current employment',
-        'Monthly mortgage payment for this loan',
-        'Monthly payments on other loans',
-        'Monthly payments for property taxes',
-        'Monthly insurance premiums',
-        'Debt obligations',
-        'Monthly DTI ratio or residual income',
-      ];
-      
-      return {
-        qm: {
-          compliant: safeHarbor,
-          safeHarbor,
-          checks: {
-            dti: {
-              value: Math.round(backEndDTI * 100) / 100,
-              limit: 43,
-              passed: dtiCompliant,
-            },
-            pointsAndFees: {
-              value: Math.round(pointsPercent * 100) / 100,
-              limit: 3,
-              passed: pointsCompliant,
-            },
-            prohibitedFeatures: {
-              items: prohibitedFeatures,
-              passed: prohibitedFeatures.length === 0,
-            },
-          },
-        },
-        atr: {
-          requirements: atrRequirements,
-          note: 'Lender must document ability to repay using verified information',
-        },
-        warnings: [
-          backEndDTI > 43 ? `DTI ${backEndDTI.toFixed(1)}% exceeds 43% QM safe harbor` : null,
-          backEndDTI > 36 ? `DTI ${backEndDTI.toFixed(1)}% is elevated (conventional guideline: 36%)` : null,
-          ...prohibitedFeatures.map(f => `QM prohibits: ${f}`),
-        ].filter(Boolean),
-        source: 'calculated',
-      };
-    }
+  execute: async ({ 
+    backEndDTI, 
+    loanTermYears = 30,
+    hasNegativeAmortization = false,
+    hasInterestOnly = false,
+    hasBalloonPayment = false,
+    pointsAndFees = 0
+  }) => {
+    const issues: string[] = [];
+    
+    // QM requirements
+    if (backEndDTI > 43) issues.push(`DTI ${backEndDTI}% exceeds 43% QM limit`);
+    if (loanTermYears > 30) issues.push('Loan term exceeds 30 years');
+    if (hasNegativeAmortization) issues.push('Negative amortization not allowed');
+    if (hasInterestOnly) issues.push('Interest-only payments not allowed');
+    if (hasBalloonPayment) issues.push('Balloon payments not allowed');
+    if (pointsAndFees > 3) issues.push(`Points/fees ${pointsAndFees}% exceed 3% limit`);
+    
+    const isQMCompliant = issues.length === 0;
+    
+    return {
+      isQMCompliant,
+      safeHarbor: isQMCompliant && backEndDTI <= 43,
+      rebuttablePresumption: !isQMCompliant && backEndDTI <= 43,
+      issues,
+      checks: {
+        dtiUnder43: backEndDTI <= 43,
+        termUnder30Years: loanTermYears <= 30,
+        noNegativeAmortization: !hasNegativeAmortization,
+        noInterestOnly: !hasInterestOnly,
+        noBalloon: !hasBalloonPayment,
+        feesUnder3Percent: pointsAndFees <= 3,
+      },
+      recommendation: isQMCompliant ? 'COMPLIANT' : 'REVIEW_REQUIRED',
+      source: 'calculated',
+    };
   },
 });
 
@@ -110,165 +58,93 @@ export const checkTRID = tool({
   description: 'Check TRID (TILA-RESPA Integrated Disclosure) timing requirements',
   parameters: z.object({
     applicationDate: z.string().describe('Application date (YYYY-MM-DD)'),
-    loanEstimateDate: z.string().optional().describe('Loan Estimate provided date'),
-    closingDisclosureDate: z.string().optional().describe('Closing Disclosure provided date'),
+    loanEstimateDate: z.string().optional().describe('Loan Estimate sent date'),
+    closingDisclosureDate: z.string().optional().describe('Closing Disclosure sent date'),
     closingDate: z.string().optional().describe('Scheduled closing date'),
   }),
   execute: async ({ applicationDate, loanEstimateDate, closingDisclosureDate, closingDate }) => {
     const appDate = new Date(applicationDate);
-    const leDate = loanEstimateDate ? new Date(loanEstimateDate) : null;
-    const cdDate = closingDisclosureDate ? new Date(closingDisclosureDate) : null;
-    const closeDate = closingDate ? new Date(closingDate) : null;
-    
-    const businessDays = (start: Date, end: Date): number => {
-      let count = 0;
-      const curr = new Date(start);
-      while (curr <= end) {
-        const day = curr.getDay();
-        if (day !== 0 && day !== 6) count++;
-        curr.setDate(curr.getDate() + 1);
-      }
-      return count;
-    };
-    
-    const results: any = {
-      applicationDate,
-      requirements: [],
-      compliance: {},
-    };
+    const today = new Date();
     
     // LE must be provided within 3 business days of application
-    const leDeadline = new Date(appDate);
-    let daysAdded = 0;
-    while (daysAdded < 3) {
-      leDeadline.setDate(leDeadline.getDate() + 1);
-      if (leDeadline.getDay() !== 0 && leDeadline.getDay() !== 6) daysAdded++;
+    const leDueDate = new Date(appDate);
+    leDueDate.setDate(leDueDate.getDate() + 3);
+    
+    const issues: string[] = [];
+    const checks: Record<string, any> = {};
+    
+    if (loanEstimateDate) {
+      const leDate = new Date(loanEstimateDate);
+      const daysDiff = Math.floor((leDate.getTime() - appDate.getTime()) / (1000 * 60 * 60 * 24));
+      checks.loanEstimateTimely = daysDiff <= 3;
+      if (daysDiff > 3) issues.push(`LE sent ${daysDiff} days after application (max 3)`);
+    } else {
+      checks.loanEstimateTimely = null;
     }
     
-    results.loanEstimate = {
-      deadline: leDeadline.toISOString().split('T')[0],
-      requirement: 'Within 3 business days of application',
+    if (closingDisclosureDate && closingDate) {
+      const cdDate = new Date(closingDisclosureDate);
+      const closeDate = new Date(closingDate);
+      const daysBefore = Math.floor((closeDate.getTime() - cdDate.getTime()) / (1000 * 60 * 60 * 24));
+      checks.closingDisclosureTimely = daysBefore >= 3;
+      if (daysBefore < 3) issues.push(`CD sent only ${daysBefore} days before closing (min 3)`);
+    } else {
+      checks.closingDisclosureTimely = null;
+    }
+    
+    return {
+      applicationDate,
+      loanEstimateDueBy: leDueDate.toISOString().split('T')[0],
+      loanEstimateDate,
+      closingDisclosureDate,
+      closingDate,
+      isCompliant: issues.length === 0,
+      issues,
+      checks,
+      source: 'calculated',
     };
-    
-    if (leDate) {
-      const daysToLE = businessDays(appDate, leDate);
-      results.loanEstimate.providedDate = loanEstimateDate;
-      results.loanEstimate.businessDays = daysToLE;
-      results.loanEstimate.compliant = daysToLE <= 3;
-      results.compliance.loanEstimate = daysToLE <= 3;
-    }
-    
-    // CD must be provided at least 3 business days before closing
-    if (closeDate) {
-      const cdDeadline = new Date(closeDate);
-      daysAdded = 0;
-      while (daysAdded < 3) {
-        cdDeadline.setDate(cdDeadline.getDate() - 1);
-        if (cdDeadline.getDay() !== 0 && cdDeadline.getDay() !== 6) daysAdded++;
-      }
-      
-      results.closingDisclosure = {
-        deadline: cdDeadline.toISOString().split('T')[0],
-        closingDate,
-        requirement: 'At least 3 business days before closing',
-      };
-      
-      if (cdDate) {
-        const daysBeforeClose = businessDays(cdDate, closeDate) - 1;
-        results.closingDisclosure.providedDate = closingDisclosureDate;
-        results.closingDisclosure.businessDaysBeforeClose = daysBeforeClose;
-        results.closingDisclosure.compliant = daysBeforeClose >= 3;
-        results.compliance.closingDisclosure = daysBeforeClose >= 3;
-      }
-    }
-    
-    // Changed circumstances that allow revised LE
-    results.changedCircumstances = [
-      'Changed circumstance affecting settlement charges',
-      'Borrower requests change',
-      'Information provided was inaccurate',
-      'New information not previously relied upon',
-    ];
-    
-    return results;
   },
 });
 
 export const generateAdverseAction = tool({
-  description: 'Generate ECOA-compliant adverse action notice with specific reasons',
+  description: 'Generate ECOA-compliant adverse action reasons',
   parameters: z.object({
-    applicantName: z.string().describe('Applicant name'),
-    applicationDate: z.string().describe('Application date'),
-    decisionDate: z.string().describe('Decision date'),
-    productType: z.enum(['mortgage', 'auto', 'personal', 'credit_card']).describe('Type of credit'),
-    reasons: z.array(z.string()).describe('Specific reasons for adverse action (max 4)'),
-    creditScore: z.number().optional().describe('Credit score used'),
-    creditScoreSource: z.string().optional().describe('Credit bureau source'),
+    creditScore: z.number().optional().describe('Credit score'),
+    dti: z.number().optional().describe('DTI ratio'),
+    ltv: z.number().optional().describe('LTV ratio'),
+    incomeInsufficient: z.boolean().optional(),
+    employmentUnstable: z.boolean().optional(),
+    derogatoryCreditHistory: z.boolean().optional(),
   }),
-  execute: async ({ applicantName, applicationDate, decisionDate, productType, reasons, creditScore, creditScoreSource }) => {
-    // ECOA requires notice within 30 days
-    const appDate = new Date(applicationDate);
-    const decDate = new Date(decisionDate);
-    const noticeDeadline = new Date(appDate);
-    noticeDeadline.setDate(noticeDeadline.getDate() + 30);
+  execute: async ({ 
+    creditScore, 
+    dti, 
+    ltv,
+    incomeInsufficient = false,
+    employmentUnstable = false,
+    derogatoryCreditHistory = false
+  }) => {
+    const reasons: string[] = [];
     
-    const daysFromApp = Math.floor((decDate.getTime() - appDate.getTime()) / (1000 * 60 * 60 * 24));
-    const timingCompliant = daysFromApp <= 30;
+    if (creditScore && creditScore < 620) reasons.push('Credit score below minimum requirement');
+    if (dti && dti > 43) reasons.push('Debt-to-income ratio exceeds guidelines');
+    if (ltv && ltv > 97) reasons.push('Loan-to-value ratio exceeds maximum');
+    if (incomeInsufficient) reasons.push('Insufficient income for loan amount requested');
+    if (employmentUnstable) reasons.push('Unable to verify stable employment history');
+    if (derogatoryCreditHistory) reasons.push('Derogatory credit history');
     
-    // Standard adverse action reasons (CFPB model codes)
-    const standardReasons: Record<string, string> = {
-      'credit_score': 'Credit score does not meet minimum requirements',
-      'dti': 'Debt-to-income ratio too high',
-      'ltv': 'Loan-to-value ratio too high',
-      'income': 'Income insufficient for amount requested',
-      'employment': 'Unable to verify employment',
-      'collateral': 'Insufficient collateral value',
-      'delinquency': 'Delinquent credit obligations',
-      'bankruptcy': 'Bankruptcy on credit record',
-      'collections': 'Collection accounts on credit report',
-      'credit_history': 'Insufficient credit history',
-    };
-    
-    // Ensure max 4 reasons per ECOA
-    const topReasons = reasons.slice(0, 4);
-    
-    const notice = {
-      type: 'Adverse Action Notice',
-      compliance: {
-        regulation: 'Equal Credit Opportunity Act (ECOA) - Regulation B',
-        timingRequirement: '30 days from application',
-        timingCompliant,
-        reasonsRequirement: 'Specific reasons must be provided (max 4 principal reasons)',
-      },
-      notice: {
-        date: decisionDate,
-        applicant: applicantName,
-        applicationDate,
-        productType,
-        decision: 'Credit application denied',
-        reasons: topReasons.map((r, i) => ({
-          number: i + 1,
-          reason: standardReasons[r] || r,
-        })),
-      },
-      creditScoreDisclosure: creditScore ? {
-        required: true,
-        score: creditScore,
-        source: creditScoreSource || 'Credit Bureau',
-        range: '300-850',
-        factors: 'Key factors that adversely affected your score',
-      } : null,
-      requiredStatements: [
-        'You have the right to request a copy of the appraisal report (for mortgage applications)',
-        'You have the right to know the specific reasons for this decision',
-        `Federal law prohibits discrimination based on race, color, religion, national origin, sex, marital status, age, receipt of public assistance, or good faith exercise of rights under the Consumer Credit Protection Act`,
+    return {
+      actionRequired: reasons.length > 0,
+      reasons: reasons.slice(0, 4), // ECOA requires up to 4 reasons
+      noticeRequired: reasons.length > 0,
+      noticeDeadline: '30 days from decision',
+      requiredDisclosures: [
+        'Right to obtain credit score',
+        'Credit reporting agency contact information',
+        'Right to dispute accuracy of credit report',
       ],
-      contactInfo: {
-        note: 'Include creditor name, address, and ECOA notice',
-      },
+      source: 'calculated',
     };
-    
-    return notice;
   },
 });
 

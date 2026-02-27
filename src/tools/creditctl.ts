@@ -1,121 +1,121 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { execSync } from 'child_process';
 
 /**
- * Credit Analysis Tools
- * Wraps creditctl CLI for credit report analysis
+ * Credit analysis tools
+ * Pure calculation - no CLI dependency
  */
 export const analyzeCredit = tool({
-  description: 'Analyze credit scores from all three bureaus and determine representative score and tier',
+  description: 'Analyze credit score and determine risk tier',
   parameters: z.object({
-    equifax: z.number().optional().describe('Equifax credit score'),
-    experian: z.number().optional().describe('Experian credit score'),
-    transunion: z.number().optional().describe('TransUnion credit score'),
+    creditScore: z.number().describe('Credit score (300-850)'),
   }),
-  execute: async ({ equifax, experian, transunion }) => {
-    const scores = [equifax, experian, transunion].filter(Boolean) as number[];
+  execute: async ({ creditScore }) => {
+    let tier: string;
+    let rateAdjustment: number;
+    let approvalLikelihood: string;
     
-    if (scores.length === 0) {
-      return { error: 'At least one credit score is required' };
+    if (creditScore >= 760) {
+      tier = 'excellent';
+      rateAdjustment = 0;
+      approvalLikelihood = 'very_high';
+    } else if (creditScore >= 700) {
+      tier = 'good';
+      rateAdjustment = 0.25;
+      approvalLikelihood = 'high';
+    } else if (creditScore >= 660) {
+      tier = 'fair';
+      rateAdjustment = 0.75;
+      approvalLikelihood = 'moderate';
+    } else if (creditScore >= 620) {
+      tier = 'poor';
+      rateAdjustment = 1.5;
+      approvalLikelihood = 'low';
+    } else {
+      tier = 'subprime';
+      rateAdjustment = 3.0;
+      approvalLikelihood = 'very_low';
     }
     
-    try {
-      const result = execSync(
-        `creditctl score ${scores.join(' ')} --json`,
-        { encoding: 'utf-8' }
-      );
-      return JSON.parse(result);
-    } catch (error: any) {
-      // Fallback calculation
-      scores.sort((a, b) => a - b);
-      const representativeScore = scores.length >= 2 ? scores[Math.floor(scores.length / 2)] : scores[0];
-      
-      let tier = 'subprime';
-      if (representativeScore >= 760) tier = 'excellent';
-      else if (representativeScore >= 700) tier = 'good';
-      else if (representativeScore >= 660) tier = 'fair';
-      else if (representativeScore >= 620) tier = 'acceptable';
-      
-      return {
-        scores: { equifax, experian, transunion },
-        representativeScore,
-        tier,
-        source: 'calculated'
-      };
-    }
+    return {
+      creditScore,
+      tier,
+      rateAdjustment,
+      approvalLikelihood,
+      meetsConventionalMinimum: creditScore >= 620,
+      meetsFHAMinimum: creditScore >= 580,
+      qualifiesForBestRates: creditScore >= 740,
+      source: 'calculated',
+    };
   },
 });
 
 export const simulateRescore = tool({
-  description: 'Simulate the impact of paying down debt on credit score (rapid rescore simulation)',
+  description: 'Simulate credit score improvement from paying down balances',
   parameters: z.object({
     currentScore: z.number().describe('Current credit score'),
-    accountType: z.enum(['credit_card', 'installment', 'mortgage']).describe('Type of account to pay down'),
-    currentBalance: z.number().describe('Current balance on the account'),
-    creditLimit: z.number().optional().describe('Credit limit (for revolving accounts)'),
-    paydownAmount: z.number().describe('Amount to pay down'),
+    currentUtilization: z.number().describe('Current credit utilization percentage'),
+    targetUtilization: z.number().describe('Target utilization after paydown'),
   }),
-  execute: async ({ currentScore, accountType, currentBalance, creditLimit, paydownAmount }) => {
-    try {
-      const args = [
-        'rescore',
-        '--score', String(currentScore),
-        '--type', accountType,
-        '--balance', String(currentBalance),
-        '--paydown', String(paydownAmount),
-      ];
-      if (creditLimit) args.push('--limit', String(creditLimit));
-      args.push('--json');
-      
-      const result = execSync(`creditctl ${args.join(' ')}`, { encoding: 'utf-8' });
-      return JSON.parse(result);
-    } catch (error: any) {
-      // Fallback simulation for credit cards
-      if (accountType === 'credit_card' && creditLimit) {
-        const currentUtilization = (currentBalance / creditLimit) * 100;
-        const newBalance = currentBalance - paydownAmount;
-        const newUtilization = (newBalance / creditLimit) * 100;
-        
-        // Rough estimate: ~20-50 points for significant utilization drops
-        let estimatedGain = 0;
-        if (currentUtilization > 30 && newUtilization <= 30) estimatedGain += 20;
-        if (currentUtilization > 50 && newUtilization <= 50) estimatedGain += 15;
-        if (currentUtilization > 10 && newUtilization <= 10) estimatedGain += 10;
-        
-        return {
-          currentScore,
-          estimatedNewScore: currentScore + estimatedGain,
-          estimatedGain,
-          currentUtilization: Math.round(currentUtilization * 10) / 10,
-          newUtilization: Math.round(newUtilization * 10) / 10,
-          recommendation: newUtilization > 30 ? 'Consider paying down further to below 30% utilization' : 'Good utilization level',
-          source: 'estimated'
-        };
-      }
-      
-      return {
-        currentScore,
-        estimatedNewScore: currentScore + 5,
-        estimatedGain: 5,
-        note: 'Installment loan paydowns typically have smaller score impact than revolving credit',
-        source: 'estimated'
-      };
-    }
+  execute: async ({ currentScore, currentUtilization, targetUtilization }) => {
+    // Rough estimate: ~20-30 points per 10% utilization reduction
+    const utilizationReduction = currentUtilization - targetUtilization;
+    const estimatedImprovement = Math.round(utilizationReduction * 2.5);
+    const projectedScore = Math.min(850, currentScore + estimatedImprovement);
+    
+    return {
+      currentScore,
+      currentUtilization,
+      targetUtilization,
+      utilizationReduction,
+      estimatedImprovement,
+      projectedScore,
+      timeframe: '30-45 days after balance reports',
+      disclaimer: 'Actual results may vary based on individual credit profile',
+      source: 'calculated',
+    };
   },
 });
 
 export const getTradelines = tool({
-  description: 'Analyze tradeline details and identify derogatory marks',
+  description: 'Estimate tradeline impact on credit profile',
   parameters: z.object({
-    includeDerogatory: z.boolean().optional().describe('Include analysis of derogatory items'),
+    numAccounts: z.number().describe('Number of open accounts'),
+    avgAccountAge: z.number().describe('Average account age in months'),
+    numDelinquencies: z.number().describe('Number of delinquent accounts'),
   }),
-  execute: async ({ includeDerogatory }) => {
-    // This would typically parse a credit report file
-    // For now, return a structure for the agent to work with
+  execute: async ({ numAccounts, avgAccountAge, numDelinquencies }) => {
+    let creditMixScore: string;
+    let ageScore: string;
+    let delinquencyImpact: string;
+    
+    if (numAccounts >= 5 && numAccounts <= 10) creditMixScore = 'optimal';
+    else if (numAccounts >= 3) creditMixScore = 'good';
+    else creditMixScore = 'thin_file';
+    
+    if (avgAccountAge >= 84) ageScore = 'excellent'; // 7+ years
+    else if (avgAccountAge >= 48) ageScore = 'good'; // 4+ years
+    else if (avgAccountAge >= 24) ageScore = 'fair'; // 2+ years
+    else ageScore = 'young';
+    
+    if (numDelinquencies === 0) delinquencyImpact = 'none';
+    else if (numDelinquencies <= 2) delinquencyImpact = 'moderate';
+    else delinquencyImpact = 'severe';
+    
     return {
-      note: 'Tradeline analysis requires credit report file input',
-      suggestion: 'Ask user for credit report details or specific account information',
+      numAccounts,
+      avgAccountAge,
+      avgAccountAgeYears: Math.round(avgAccountAge / 12 * 10) / 10,
+      numDelinquencies,
+      creditMixScore,
+      ageScore,
+      delinquencyImpact,
+      recommendations: delinquencyImpact === 'severe' 
+        ? ['Focus on rehabilitating delinquent accounts', 'Consider credit counseling']
+        : creditMixScore === 'thin_file'
+        ? ['Consider becoming authorized user on established account']
+        : ['Maintain current good standing'],
+      source: 'calculated',
     };
   },
 });
