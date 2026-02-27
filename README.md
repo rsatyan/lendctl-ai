@@ -1,22 +1,23 @@
 # LendCtl AI
 
-🏦 **Autonomous Lending Decision Agent** — powered by the [LendCtl CLI Suite](https://github.com/rsatyan/lendctl-skill)
+🏦 **Autonomous Lending Decision Agent** — Ask lending questions in plain English. Get instant, compliant decisions.
 
 [![npm version](https://img.shields.io/npm/v/lendctl-ai.svg)](https://www.npmjs.com/package/lendctl-ai)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-Ask lending questions in plain English. Get instant, compliant decisions with full audit trails.
-
 ```bash
-lendctl-ai ask "Can I qualify for a $400k mortgage with $90k income and 720 credit?"
+npm install -g lendctl-ai
+lendctl-ai ask 'Can I qualify for a $400k mortgage with $90k income and 720 credit?'
 ```
+
+> ⚠️ **Note:** Use single quotes around questions with `$` signs to prevent shell variable expansion.
 
 ## Features
 
 - 🤖 **Natural Language Interface** — Ask lending questions like you'd ask a loan officer
-- 📋 **Autonomous Planning** — Decomposes complex questions into tool calls
+- 📋 **Autonomous Planning** — Decomposes complex questions into calculations
 - ✅ **Self-Validation** — Verifies calculations and compliance automatically
-- 📊 **8 Integrated Tools** — Income, credit, mortgage, auto, personal, card, compliance, audit
+- 📊 **8 Built-in Calculators** — Income, credit, mortgage, auto, personal, card, compliance, audit
 - 📝 **Audit Trail** — Every decision logged for regulatory compliance
 - 🔌 **Multi-Channel** — CLI, REST API, WhatsApp, Telegram
 
@@ -27,10 +28,10 @@ lendctl-ai ask "Can I qualify for a $400k mortgage with $90k income and 720 cred
 npm install -g lendctl-ai
 
 # Set your OpenAI API key
-export OPENAI_API_KEY=your-key
+export OPENAI_API_KEY=sk-...
 
-# Ask a question
-lendctl-ai ask "I make $85,000/year with a 720 credit score. Can I afford a $350,000 house?"
+# Ask a question (use single quotes for $ signs!)
+lendctl-ai ask 'I make $85,000/year with a 720 credit score. Can I afford a $350,000 house?'
 
 # Interactive chat
 lendctl-ai chat
@@ -41,10 +42,12 @@ lendctl-ai serve
 
 ## Example
 
+```bash
+$ lendctl-ai ask 'I make $85,000/year and want to buy a $350,000 home with 10% down. I have a 720 credit score and $400/month in car payments.'
 ```
-$ lendctl-ai ask "I make $85,000/year and want to buy a $350,000 home with 10% down. 
-                  I have a 720 credit score and $400/month in car payments."
 
+Output:
+```
 ╔═══════════════════════════════════════════════════════════╗
 ║  LendCtl AI - Autonomous Lending Decision Agent           ║
 ╚═══════════════════════════════════════════════════════════╝
@@ -81,20 +84,22 @@ Session: lendctl-abc123
 Iterations: 1 | Time: 4823ms
 ```
 
-## Integrated Tools
+## Built-in Calculators
 
-| Tool | Description |
-|------|-------------|
+All calculations run locally — no external CLI tools required.
+
+| Calculator | Description |
+|------------|-------------|
 | `finctl` | Income analysis, DTI calculation |
-| `creditctl` | Credit score analysis, rapid rescore simulation |
+| `creditctl` | Credit score analysis, risk tier, rescore simulation |
 | `mortctl` | Mortgage qualification, LTV, PMI, amortization |
-| `autoloanctl` | Auto loan calculations, GAP insurance |
-| `persctl` | Personal loan eligibility, debt consolidation |
+| `autoloanctl` | Auto loan calculations, GAP insurance recommendations |
+| `persctl` | Personal loan eligibility, debt consolidation analysis |
 | `cardctl` | Credit limit estimation, balance transfer analysis |
-| `compctl` | QM/ATR validation, TRID timing, adverse action |
-| `auditctl` | Immutable audit trail, compliance exports |
+| `compctl` | QM/ATR validation, TRID timing, adverse action notices |
+| `auditctl` | In-memory audit trail, compliance exports |
 
-## API
+## API Server
 
 Start the server:
 
@@ -108,7 +113,7 @@ Query endpoint:
 curl -X POST http://localhost:5055/api/v1/query \
   -H "Content-Type: application/json" \
   -d '{
-    "question": "Can I qualify for a $400k mortgage with $90k income?",
+    "question": "Can I qualify for a 400k mortgage with 90k income?",
     "model": "gpt-4o",
     "stream": false
   }'
@@ -138,10 +143,10 @@ Response:
 ## Architecture
 
 ```
-User Query → Planner (LLM) → Executor (Tools) → Validator → Reporter
+User Query → Planner (LLM) → Executor (Calculators) → Validator → Reporter
                                     ↓
                         ┌──────────────────────┐
-                        │   LendCtl CLI Suite  │
+                        │   Built-in Tools     │
                         │ finctl · creditctl   │
                         │ mortctl · autoloanctl│
                         │ persctl · cardctl    │
@@ -150,8 +155,6 @@ User Query → Planner (LLM) → Executor (Tools) → Validator → Reporter
 ```
 
 ## Configuration
-
-Environment variables:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -172,11 +175,10 @@ lendctl-ai eval --sample 5
 
 ## Related
 
-- [LendCtl Suite](https://github.com/rsatyan/lendctl-skill) — The 8 CLI tools powering this agent
-- [finctl](https://github.com/rsatyan/finctl) — Income & DTI calculator
-- [creditctl](https://github.com/rsatyan/creditctl) — Credit report analyzer
-- [mortctl](https://github.com/rsatyan/mortctl) — Mortgage underwriting
-- [compctl](https://github.com/rsatyan/compctl) — Compliance checker
+- [LendCtl Skill](https://github.com/rsatyan/lendctl-skill) — AI agent skill with 6 workflows
+- [finctl](https://github.com/rsatyan/finctl) — Standalone income & DTI CLI
+- [creditctl](https://github.com/rsatyan/creditctl) — Standalone credit analysis CLI
+- [mortctl](https://github.com/rsatyan/mortctl) — Standalone mortgage underwriting CLI
 
 ## License
 
